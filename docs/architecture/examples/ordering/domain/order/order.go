@@ -33,6 +33,25 @@ func NewOrder(params NewOrderParams) (*Order, error) {
 	return &Order{Entity: domain.NewEntity(params.ID), status: Open}, nil
 }
 
+// ReconstituteParams groups the full persisted state of an order. Unlike
+// NewOrderParams it carries the status and the lines, because rebuilding an order
+// restores where it already is — not the empty, open order NewOrder starts from.
+type ReconstituteParams struct {
+	ID     ID
+	Status Status
+	Lines  []Line
+}
+
+// Reconstitute rebuilds an order from stored state (repository adapter only). It just
+// loads the persisted fields into a fresh entity — no validation, no event, no policy.
+func Reconstitute(params ReconstituteParams) *Order {
+	return &Order{
+		Entity: domain.NewEntity(params.ID),
+		status: params.Status,
+		lines:  params.Lines,
+	}
+}
+
 func (order *Order) Status() Status { return order.status }
 
 // Lines returns a copy so callers cannot mutate the order's state behind its
@@ -62,7 +81,7 @@ func (order *Order) Ship() error {
 		return NewEmptyOrderError()
 	}
 	order.status = Shipped
-	order.Record(NewOrderShipped(order.ID()))
+	order.Record(NewOrderShippedEvent(order.ID()))
 	return nil
 }
 

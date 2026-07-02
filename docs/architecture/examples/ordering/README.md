@@ -17,13 +17,13 @@ ordering/
     ├── add_product_to_order.go   #   domain service (cross-entity)
     ├── product/                  # package product
     │   ├── id.go  name.go  price.go   # value objects
-    │   ├── events.go             #   ProductRepriced — recorded by Product
+    │   ├── events.go             #   ProductRepricedEvent — recorded by Product
     │   ├── errors.go             #   error factories → *domain.DomainError
     │   ├── product.go            #   entity
     │   └── repository.go         #   repository port
     └── order/                    # package order
         ├── id.go  quantity.go  line.go
-        ├── events.go             #   OrderShipped — recorded by Order
+        ├── events.go             #   OrderShippedEvent — recorded by Order
         ├── errors.go
         ├── order.go
         └── repository.go
@@ -42,6 +42,7 @@ ordering/
 - Constructors take a **params struct** and **guard-clause** each missing field.
 - **Named conditions** as predicate methods (`order.hasShipped()`, `order.isEmpty()`), phrased positively (**G28**, **G29**).
 - `Order.Lines()` returns a **copy**; commands (`AddLine`, `Ship`) do, queries (`Status`, `Lines`) answer (**CQS**).
+- **`Reconstitute` beside each constructor** — `product.Reconstitute` / `order.Reconstitute` take a params struct of the full stored state (`order`'s includes status and lines) and just build the entity — no validation, no event, no policy; used only by the repository adapter.
 
 ### Errors — `shared.go`, `product/errors.go`, `order/errors.go`
 - One `DomainError`; one **self-describing factory per violation** — business/invariant violations only, no "not found" or HTTP status.
@@ -51,7 +52,7 @@ ordering/
 - **Interfaces** declared by the domain; persistence-oriented names (`Create`, `Get`, `Exists`, `Update`, `Delete`).
 
 ### Domain events — `shared.go` (marker), `order/events.go`, `product/events.go`
-- **Only entities fire events** — `Order.Ship()` records `OrderShipped`, `Product.Reprice()` records `ProductRepriced`; value objects and services never do.
+- **Only entities fire events** — `Order.Ship()` records `OrderShippedEvent`, `Product.Reprice()` records `ProductRepricedEvent`; value objects and services never do.
 - **The `Event` marker lives in `shared.go`** (the context's); **each entity has its own `events.go`** defining and recording its events.
 - **Past-tense facts**, immutable, carrying an **id** (`order.ID`, `product.ID`), never the entity.
 - **Two CQS-split methods, promoted from the base `Entity`** — `PullEvents()` reads, `DrainEvents()` clears. The application pulls, dispatches, and drains in its unit of work (see [`application-layer.md`](../../application-layer.md)).

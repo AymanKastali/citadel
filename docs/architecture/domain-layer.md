@@ -86,6 +86,47 @@ func (entity *Entity[ID]) ID() ID              { return entity.id }
 func (entity *Entity[ID]) Record(event Event)  { entity.events = append(entity.events, event) }
 ```
 
+## Reconstitution (rebuilding from persistence)
+
+Alongside its business constructor, **every entity exposes a `Reconstitute`** — the
+function the repository adapter uses to rebuild a stored entity. The constructor
+(`New…`, `Register`, …) creates a *new* entity: it may apply a policy and it records a
+creation event. `Reconstitute` restores an *existing* one and does neither.
+
+- **Takes the full persisted state** — id, status, and any other lifecycle fields, as
+  already-valid value objects and typed ids in one `ReconstituteParams` struct. This is
+  usually a *superset* of the creation params (which derive or default that state), so
+  `ReconstituteParams` is its own struct, not the constructor's.
+- **Just loads — no validation.** The data comes from our own store and was valid when
+  written, so `Reconstitute` performs no checks; it takes the params struct and **builds
+  the entity directly, returning it (no `error`)**. Contrast the constructor, which
+  Fail-Fast validates untrusted external input.
+- **Records no event, applies no policy** — rehydration is not a new fact, and the
+  creation rules already ran when the entity was first created.
+- **Builds the base via `domain.NewEntity(id)`**, so a reconstituted entity starts with
+  an empty event slice.
+- **Called only by the repository adapter** — the domain side of translating a
+  persistence record *into* the entity; nothing else rebuilds one from stored state, and
+  adapters never assign fields directly.
+
+```go
+// account/account.go — Reconstitute just loads the stored fields into a fresh entity:
+// no validation, no event, no policy. It takes the params struct and returns the entity.
+type ReconstituteParams struct {
+    ID     ID
+    Email  Email
+    Status Status
+}
+
+func Reconstitute(params ReconstituteParams) *Account {
+    return &Account{
+        Entity: domain.NewEntity(params.ID),
+        email:  params.Email,
+        status: params.Status,
+    }
+}
+```
+
 ## Value objects
 
 - Live in the entity directory (e.g. `product/price.go`).
@@ -244,7 +285,7 @@ func Register(params RegisterParams, verification EmailVerificationPolicy) (*Acc
         email:  params.Email,
         status: verification.InitialStatus(), // the strategy decides; the entity accommodates
     }
-    account.Record(NewAccountRegistered(account.ID(), account.status))
+    account.Record(NewAccountRegisteredEvent(account.ID(), account.status))
     return account, nil
 }
 ```
@@ -254,7 +295,8 @@ A worked version lives in [`examples/identity/`](./examples/identity/README.md).
 ## Domain events
 
 - **Only entities fire domain events** — recorded as the entity changes state. Value objects and domain services never do.
-- Named in the **past tense** for a fact that happened (`OrderShipped`, `ProductRepriced`).
+- Named in the **past tense** for a fact that happened (`OrderShippedEvent`, `ProductRepricedEvent`).
+- **`Event` suffix on the type and constructor** — the type is `<PastTenseConcept>Event` and its constructor `New<PastTenseConcept>Event`, mirroring the `New<Concept>Error` suffix on domain errors so the two families read symmetrically. (The `Event` *marker interface*, the `EventName()` method, and the wire-name constant/string are separate and keep their own names.)
 - **Each context declares its `Event` marker** at the domain root, in `domain/shared.go` (alongside `DomainError`).
 - **Each entity has its own `events.go`** in its package (`order/events.go`, `product/events.go`), defining and recording its own events.
 - **Immutable pure domain objects**, carrying **ids, never a whole entity**, implementing the context's `Event` marker.
@@ -280,13 +322,13 @@ package order
 
 const orderShippedEventName = "order.shipped"
 
-// OrderShipped is recorded when an order ships. It carries the order's id.
-type OrderShipped struct {
+// OrderShippedEvent is recorded when an order ships. It carries the order's id.
+type OrderShippedEvent struct {
     orderID ID
 }
 
-func NewOrderShipped(orderID ID) OrderShipped { return OrderShipped{orderID: orderID} }
+func NewOrderShippedEvent(orderID ID) OrderShippedEvent { return OrderShippedEvent{orderID: orderID} }
 
-func (e OrderShipped) OrderID() ID       { return e.orderID }
-func (e OrderShipped) EventName() string { return orderShippedEventName }
+func (e OrderShippedEvent) OrderID() ID       { return e.orderID }
+func (e OrderShippedEvent) EventName() string { return orderShippedEventName }
 ```
