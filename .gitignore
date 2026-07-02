@@ -1,0 +1,9 @@
+# Local environment / secrets
+.env
+
+# Build artifacts
+/citadel
+/out/
+
+# Editor / OS
+.DS_Store
