@@ -41,6 +41,24 @@ func NewProduct(params NewProductParams) (*Product, error) {
 	}, nil
 }
 
+// ReconstituteParams groups the full persisted state of a product. A product has no
+// lifecycle beyond its name and price, so this mirrors NewProductParams.
+type ReconstituteParams struct {
+	ID    ID
+	Name  Name
+	Price Price
+}
+
+// Reconstitute rebuilds a product from stored state (repository adapter only). It just
+// loads the persisted fields into a fresh entity — no validation, no event, no policy.
+func Reconstitute(params ReconstituteParams) *Product {
+	return &Product{
+		Entity: domain.NewEntity(params.ID),
+		name:   params.Name,
+		price:  params.Price,
+	}
+}
+
 func (product *Product) Name() Name { return product.name }
 
 func (product *Product) Price() Price { return product.price }
@@ -49,7 +67,7 @@ func (product *Product) Price() Price { return product.price }
 // so there is no raw input left to validate here.
 func (product *Product) Reprice(price Price) {
 	product.price = price
-	product.Record(NewProductRepriced(product.ID()))
+	product.Record(NewProductRepricedEvent(product.ID()))
 }
 
 func (product *Product) Rename(name Name) { product.name = name }
